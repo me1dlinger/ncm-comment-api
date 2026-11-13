@@ -124,17 +124,19 @@ class CommentService {
   /// directly.
   Future<FetchedPage> _fetchPage(ResolvedResource resource, CommentQuery query) async {
     if (query.sort != CommentSort.time) {
-      return _fetchOnce(resource, query, cursor: null);
+      return _fetchOnce(resource, query, upstreamPageNo: query.page, cursor: null);
     }
 
+    // A caller that passes a cursor reads that one page. Otherwise the pages
+    // are walked from the first, and each step asks with the page number it has
+    // reached (1 based) and the cursor the previous step returned: the upstream
+    // only pages when both agree.
     var cursor = query.cursor;
     final skipped = query.cursor == null ? query.pageNo : 0;
 
-    // Walk to the page the caller asked for: one upstream call per page, which
-    // is what the cursor protocol costs.
     FetchedPage? page;
     for (var index = 0; index <= skipped; index++) {
-      page = await _fetchOnce(resource, query, cursor: cursor);
+      page = await _fetchOnce(resource, query, upstreamPageNo: query.page + (index - skipped), cursor: cursor);
       if (page.error != null) {
         return page;
       }
@@ -149,19 +151,29 @@ class CommentService {
   }
 
   /// One `comment/new` call.
-  Future<FetchedPage> _fetchOnce(ResolvedResource resource, CommentQuery query, {required String? cursor}) {
+  ///
+  /// [upstreamPageNo] is what the upstream gets as `pageNo`, and it is 1 based:
+  /// the caller's `page`, never the 0 based index. The cursor order needs it to
+  /// grow alongside the cursor, because the upstream ignores a cursor that
+  /// arrives on page 1 but pages correctly when the number matches how far the
+  /// cursor has walked.
+  Future<FetchedPage> _fetchOnce(
+    ResolvedResource resource,
+    CommentQuery query, {
+    required int upstreamPageNo,
+    required String? cursor,
+  }) {
     return _semaphore.run(() async {
       final response = await client.get('/comment/new', {
         'type': resource.type.code,
         'id': resource.id,
-        // The cursor order needs a page number that grows with the cursor: the
-        // upstream ignores a cursor that arrives on page 1 but pages correctly
-        // when the page number matches how far the cursor has walked.
-        'pageNo': cursor == null ? 1 : query.page,
+        'pageNo': upstreamPageNo,
         'pageSize': query.pageSize,
         'showInner': true,
         'sortType': query.sort.apiSortType,
-        'cursor': cursor ?? (query.sort == CommentSort.time ? '0' : null),
+        // No cursor on the first page: an absent cursor reads as the start, and
+        // leaving it out avoids depending on how the upstream treats `0`.
+        'cursor': cursor,
       });
 
       final data = response.map?['data'];

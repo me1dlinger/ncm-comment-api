@@ -58,11 +58,19 @@ class FakeUpstream extends UpstreamClient {
           // cursor has not reached yet; this mirrors that.
           final cursor = '${params?['cursor'] ?? ''}';
           final pageNo = int.tryParse('${params?['pageNo']}') ?? 1;
-          final times = switch (cursor) {
-            '' || '0' => pageNo == 1 ? [5000, 4000] : <int>[],
-            '4000' => [3000, 2000],
-            '2000' => [4, 6],
+          // Each cursor belongs to one page: the third page is only reachable
+          // by carrying the second page's cursor with pageNo=3.
+          final times = switch ((cursor, pageNo)) {
+            (_, _) when cursor == '' || cursor == '0' => pageNo == 1 ? [5000, 4000] : <int>[],
+            ('4000', _) => [3000, 2000],
+            ('2000', _) => [1000, 900],
             _ => <int>[],
+          };
+          final nextCursor = switch ((cursor, pageNo)) {
+            (_, _) when cursor == '' || cursor == '0' => '4000',
+            ('4000', _) => '2000',
+            ('2000', _) => '900',
+            _ => '0',
           };
           return XResponse(
             body: {
@@ -70,7 +78,7 @@ class FakeUpstream extends UpstreamClient {
               'data': {
                 'totalCount': 6,
                 'hasMore': times.isNotEmpty,
-                'cursor': times.isEmpty ? '0' : '${times.last}',
+                'cursor': times.isEmpty ? '0' : nextCursor,
                 'comments': [
                   for (final time in times)
                     {
@@ -265,6 +273,28 @@ void main() {
       expect(page['hotComments'], isNotEmpty);
     });
 
+    test('page 2 and later ask the upstream for that page', () async {
+      // Regression: every page used to be requested with pageNo=1, so page 2
+      // answered page 1's comments again. The fake upstream keys its comments
+      // on the page number it is asked for.
+      upstream.calls.clear();
+      final second = await bodyOf(
+        await call(app, '/api/comments?song_id=186016&page=2&pageSize=2&hot=0&reply_limit=0'),
+      );
+      final page = second['body'] as Map<String, dynamic>;
+      expect(page['page'], 2);
+      expect((page['comments'] as List).map((c) => c['commentId']), ['1002', '2002']);
+      expect(upstream.calls, contains(contains('pageNo=2')));
+
+      final third = await bodyOf(
+        await call(app, '/api/comments?song_id=186016&page=3&pageSize=2&sort=hot&hot=0&reply_limit=0'),
+      );
+      final hot = third['body'] as Map<String, dynamic>;
+      expect(hot['page'], 3);
+      expect((hot['comments'] as List).map((c) => c['commentId']), ['1003', '2003']);
+      expect(upstream.calls, contains(contains('pageNo=3')));
+    });
+
     test('accepts a song id and skips search', () async {
       upstream.calls.clear();
       final response = await call(app, '/api/comments?song_id=186016&reply_limit=0&hot=0');
@@ -302,7 +332,7 @@ void main() {
     test('page 3 walks the cursor instead of asking pageNo=3', () async {
       final response = await call(app, '/api/comments?song_id=186016&sort=time&pageSize=2&page=3&hot=0&reply_limit=0');
       final page = (await bodyOf(response))['body'] as Map<String, dynamic>;
-      expect((page['comments'] as List).map((c) => c['createTime']), [4000, 6000]);
+      expect((page['comments'] as List).map((c) => c['createTime']), [1000000, 900000]);
     });
 
     test('a cursor reads its page directly', () async {
