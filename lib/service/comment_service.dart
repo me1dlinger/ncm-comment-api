@@ -124,7 +124,29 @@ class CommentService {
   /// directly.
   Future<FetchedPage> _fetchPage(ResolvedResource resource, CommentQuery query) async {
     if (query.sort != CommentSort.time) {
-      return _fetchOnce(resource, query, upstreamPageNo: query.page, cursor: null);
+      final page = await _fetchOnce(resource, query, upstreamPageNo: query.page, cursor: null);
+      // The upstream's recommended ranking (sortType 99) answers only its
+      // first page: every later page comes back empty even though the total
+      // says more comments exist. Those pages are served from the likes
+      // order instead, which does page; the first page keeps the recommended
+      // ranking.
+      if (query.sort == CommentSort.recommended &&
+          page.error == null &&
+          page.comments.isEmpty &&
+          page.total > 0 &&
+          query.page > 1 &&
+          query.offset < page.total) {
+        final likes = await _fetchOnce(
+          resource,
+          query.copyWith(sort: CommentSort.hot),
+          upstreamPageNo: query.page,
+          cursor: null,
+        );
+        if (likes.comments.isNotEmpty) {
+          return likes;
+        }
+      }
+      return page;
     }
 
     // A caller that passes a cursor reads that one page. Otherwise the pages
