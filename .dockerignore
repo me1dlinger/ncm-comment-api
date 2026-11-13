@@ -6,6 +6,6 @@ docs/
 .github/
 config.conf
 
-# the image only needs the compiled binary
+# the image only needs the compiled binaries
 build/*
-!build/ncm_comment_api
+!build/ncm_comment_api-*

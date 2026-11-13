@@ -1,19 +1,23 @@
 # Runtime image only: it copies an already compiled binary.
 #
-# The binary is built by the workflow on a runner of the target architecture
-# (`dart compile exe`, the same SDK the tests run with), and a locally built
-# image is made the same way:
+# The binaries are compiled by the workflow on a runner of their own
+# architecture (`dart compile exe`, the same SDK the tests use) and handed to
+# this build as build/ncm_comment_api-<arch>:
 #
 #   dart pub get
-#   dart compile exe bin/ncm_comment_api.dart -o build/ncm_comment_api
-#   docker build .
+#   dart compile exe bin/ncm_comment_api.dart -o build/ncm_comment_api-amd64
+#   docker build --platform linux/amd64 .
 #
 # Keeping compilation out of the image build means no Dart SDK is needed here
 # and nothing has to be compiled under QEMU for the arm64 image.
 #
-# The base is Debian rather than Alpine: `dart compile exe` produces a
-# dynamically linked binary against glibc, which musl cannot load.
+# The base is Debian rather than Alpine: a compiled executable links against
+# glibc, which musl cannot load.
 FROM debian:bookworm-slim
+
+# Buildx sets this to the target architecture (`amd64` / `arm64`), which picks
+# the matching binary; a local build defaults to the host's architecture.
+ARG TARGETARCH=amd64
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
@@ -21,9 +25,7 @@ RUN apt-get update \
 
 WORKDIR /app
 
-# The workflow puts the binary at build/ncm_comment_api before building.
-ARG BINARY=build/ncm_comment_api
-COPY ${BINARY} /app/ncm_comment_api
+COPY build/ncm_comment_api-${TARGETARCH} /app/ncm_comment_api
 
 RUN chmod +x /app/ncm_comment_api
 

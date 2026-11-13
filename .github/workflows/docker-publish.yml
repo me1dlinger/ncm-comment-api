@@ -56,23 +56,21 @@ jobs:
       - name: Test
         run: dart test
 
-  # Build each architecture on a runner of that architecture.
+  # Compile once per architecture, on a runner of that architecture.
   #
   # `dart compile exe` emits a native executable, so the arm64 binary has to be
-  # compiled on arm64: GitHub's arm runners do that natively, and the image
-  # build itself is then only a COPY of that binary, nothing compiled under
-  # QEMU. Each job pushes IMAGE_NAME-<arch>; the manifest job merges them.
-  build:
+  # compiled on arm64. Nothing is pushed here: the binaries are handed to the
+  # publish job, which builds and pushes one multi-platform image, so Docker Hub
+  # only ever sees the one repository.
+  compile:
     needs: test
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: amd64
-            platform: linux/amd64
             runner: ubuntu-latest
           - arch: arm64
-            platform: linux/arm64
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
     steps:
@@ -90,49 +88,48 @@ jobs:
       - name: Compile the server for ${{ matrix.arch }}
         run: |
           mkdir -p build
-          dart compile exe bin/ncm_comment_api.dart -o build/ncm_comment_api
-          file build/ncm_comment_api
+          dart compile exe bin/ncm_comment_api.dart -o build/ncm_comment_api-${{ matrix.arch }}
+          file build/ncm_comment_api-${{ matrix.arch }}
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Docker Hub
-        if: ${{ github.event_name == 'push' || inputs.push }}
-        uses: docker/login-action@v3
+      - name: Upload the binary
+        uses: actions/upload-artifact@v4
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          name: binary-${{ matrix.arch }}
+          path: build/ncm_comment_api-${{ matrix.arch }}
+          if-no-files-found: error
+          retention-days: 1
 
-      - name: Build and push the ${{ matrix.arch }} image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile
-          platforms: ${{ matrix.platform }}
-          push: ${{ github.event_name == 'push' || inputs.push }}
-          tags: ${{ env.IMAGE_NAME }}-${{ matrix.arch }}
-          labels: |
-            org.opencontainers.image.title=ncm-comment-api
-            org.opencontainers.image.description=NetEase Cloud Music comment query API built on api-enhanced
-          # 关闭 provenance/SBOM，保持 manifest 简洁、兼容旧版 docker pull
-          provenance: false
-          sbom: false
-
-  # Merge the per-architecture images into one multi-arch manifest the tags
-  # point at, so `docker pull` picks the right architecture by itself.
-  manifest:
-    needs: build
+  # Build and push one multi-platform image, the same way the other projects
+  # here do it: a single buildx push, so only <IMAGE_NAME> exists on Docker Hub.
+  publish:
+    needs: [compile]
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download the compiled binaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: binary-*
+          path: build
+          merge-multiple: true
+
+      - name: Check both binaries are there
+        run: ls -la build && file build/ncm_comment_api-*
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Log in to Docker Hub
         if: ${{ github.event_name == 'push' || inputs.push }}
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
 
       - name: Extract metadata (tags, labels)
         id: meta
@@ -149,26 +146,20 @@ jobs:
             org.opencontainers.image.title=ncm-comment-api
             org.opencontainers.image.description=NetEase Cloud Music comment query API built on api-enhanced
 
-      - name: Create and push the multi-arch manifest
-        if: ${{ github.event_name == 'push' || inputs.push }}
-        env:
-          TAGS: ${{ steps.meta.outputs.tags }}
-        run: |
-          set -eu
-          if [ -z "${TAGS}" ]; then
-            echo "no tags to push"
-            exit 0
-          fi
-          set -f  # tags are newline separated, no globbing
-          args=""
-          for tag in ${TAGS}; do
-            args="${args} --tag ${tag}"
-          done
-          set +f
-          echo "creating manifest for:${args}"
-          docker buildx imagetools create ${args} \
-            "${IMAGE_NAME}-amd64" \
-            "${IMAGE_NAME}-arm64"
+      - name: Build and push (linux/amd64 + linux/arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: ${{ env.PLATFORMS }}
+          push: ${{ github.event_name == 'push' || inputs.push }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # 关闭 provenance/SBOM，保持 manifest 简洁、兼容新版 docker pull
+          provenance: false
+          sbom: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Summary
         run: |
@@ -176,6 +167,6 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "Platforms: \`linux/amd64\`, \`linux/arm64\`" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo '\`\`\`' >> "$GITHUB_STEP_SUMMARY"
           echo "${{ steps.meta.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo '\`\`\`' >> "$GITHUB_STEP_SUMMARY"

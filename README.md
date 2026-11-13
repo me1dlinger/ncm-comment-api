@@ -144,9 +144,11 @@ token = sha256(username + password + wyy_api_base_url)
 
 ```sh
 dart pub get
-dart compile exe bin/ncm_comment_api.dart -o build/ncm_comment_api
-docker build -t ncm-comment-api .
+dart compile exe bin/ncm_comment_api.dart -o build/ncm_comment_api-amd64
+docker build --platform linux/amd64 -t ncm-comment-api .
 ```
+
+（本机是 arm64 时把 `amd64` 换成 `arm64`，`TARGETARCH` 会选中对应二进制。）
 
 ### 自动构建发布
 
@@ -160,8 +162,10 @@ git push origin v1.0.0
 流程（`.github/workflows/docker-publish.yml`）：
 
 1. **test**：`dart pub get` → `dart analyze --fatal-infos` → `dart test`，任一失败则不再发布
-2. **build**：`linux/amd64`、`linux/arm64` 各自在对应架构的 runner 上原生编译并打包镜像
-3. **manifest**：把两个架构合成一个多架构 manifest
+2. **compile**：`linux/amd64`、`linux/arm64` 各自在对应架构的 runner 上原生编译，二进制作为 artifact 传给下一步
+3. **publish**：一次多平台 `buildx` 构建，把两个二进制打进同一个镜像并推送
+
+Docker Hub 上只会产生 `meidlinger1024/ncm-comment-api` 一个仓库。
 
 生成镜像标签：`1.0.0`、`1.0`、`latest`；`docker pull` 会自动选择对应架构。
 
