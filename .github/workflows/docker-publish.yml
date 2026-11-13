@@ -56,12 +56,12 @@ jobs:
       - name: Test
         run: dart test
 
-  # Build each architecture on its own runner.
+  # Build each architecture on a runner of that architecture.
   #
-  # Compiling Dart under QEMU is memory hungry and one failing platform would
-  # fail a shared multi-platform build; a per-platform matrix keeps the native
-  # amd64 build fast and lets arm64 fail on its own terms. Each job pushes
-  # IMAGE_NAME-<arch>; the manifest job below merges the two.
+  # `dart compile exe` emits a native executable, so the arm64 binary has to be
+  # compiled on arm64: GitHub's arm runners do that natively, and the image
+  # build itself is then only a COPY of that binary, nothing compiled under
+  # QEMU. Each job pushes IMAGE_NAME-<arch>; the manifest job merges them.
   build:
     needs: test
     strategy:
@@ -73,16 +73,25 @@ jobs:
             runner: ubuntu-latest
           - arch: arm64
             platform: linux/arm64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # arm64 无法在 x86 runner 上原生构建，需要 QEMU 模拟
-      - name: Set up QEMU
-        if: matrix.arch == 'arm64'
-        uses: docker/setup-qemu-action@v3
+      - name: Set up Dart
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: "3.9.2"
+
+      - name: Resolve dependencies
+        run: dart pub get
+
+      - name: Compile the server for ${{ matrix.arch }}
+        run: |
+          mkdir -p build
+          dart compile exe bin/ncm_comment_api.dart -o build/ncm_comment_api
+          file build/ncm_comment_api
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -94,7 +103,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push ${{ matrix.arch }}
+      - name: Build and push the ${{ matrix.arch }} image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -108,8 +117,6 @@ jobs:
           # 关闭 provenance/SBOM，保持 manifest 简洁、兼容旧版 docker pull
           provenance: false
           sbom: false
-          cache-from: type=gha,scope=${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
 
   # Merge the per-architecture images into one multi-arch manifest the tags
   # point at, so `docker pull` picks the right architecture by itself.

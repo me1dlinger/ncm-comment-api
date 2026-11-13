@@ -1,32 +1,31 @@
-# Build the server binary, then ship it on a small runtime image.
+# Runtime image only: it copies an already compiled binary.
 #
-# The SDK image is only needed at build time; the result is a self-contained
-# executable, so the runtime image does not carry a Dart SDK.
+# The binary is built by the workflow on a runner of the target architecture
+# (`dart compile exe`, the same SDK the tests run with), and a locally built
+# image is made the same way:
 #
-# The Dart version is pinned to the one CI tests with (see the test job in
-# .github/workflows/docker-publish.yml), so a locally built image and the
-# published one compile the same source the same way.
-ARG DART_VERSION=3.9.2
-FROM dart:${DART_VERSION} AS build
+#   dart pub get
+#   dart compile exe bin/ncm_comment_api.dart -o build/ncm_comment_api
+#   docker build .
+#
+# Keeping compilation out of the image build means no Dart SDK is needed here
+# and nothing has to be compiled under QEMU for the arm64 image.
+#
+# The base is Debian rather than Alpine: `dart compile exe` produces a
+# dynamically linked binary against glibc, which musl cannot load.
+FROM debian:bookworm-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# The lock file goes in with the manifest, so the build resolves the exact
-# versions CI tested rather than whatever is newest that day.
-COPY pubspec.yaml pubspec.lock ./
+# The workflow puts the binary at build/ncm_comment_api before building.
+ARG BINARY=build/ncm_comment_api
+COPY ${BINARY} /app/ncm_comment_api
 
-COPY bin ./bin
-COPY lib ./lib
-
-RUN dart pub get \
-    && dart compile exe bin/ncm_comment_api.dart -o /app/build/ncm_comment_api
-
-FROM alpine:latest
-
-RUN apk add --no-cache libc6-compat ca-certificates
-
-WORKDIR /app
-COPY --from=build /app/build/ncm_comment_api /app/ncm_comment_api
+RUN chmod +x /app/ncm_comment_api
 
 ENV PORT=8383
 ENV WYY_API_BASE_URL=http://127.0.0.1:3000

@@ -1,4 +1,11 @@
-**/.dart_tool/
-**/build/
 .git/
+.dart_tool/
+**/.dart_tool/
+test/
+docs/
+.github/
 config.conf
+
+# the image only needs the compiled binary
+build/*
+!build/ncm_comment_api

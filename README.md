@@ -140,7 +140,11 @@ token = sha256(username + password + wyy_api_base_url)
 
 ### 本地构建镜像
 
+镜像只包含编译好的二进制，构建分两步：
+
 ```sh
+dart pub get
+dart compile exe bin/ncm_comment_api.dart -o build/ncm_comment_api
 docker build -t ncm-comment-api .
 ```
 
@@ -156,7 +160,7 @@ git push origin v1.0.0
 流程（`.github/workflows/docker-publish.yml`）：
 
 1. **test**：`dart pub get` → `dart analyze --fatal-infos` → `dart test`，任一失败则不再发布
-2. **build**：`linux/amd64`、`linux/arm64` 各用一个 job 构建并推送（arm64 走 QEMU）
+2. **build**：`linux/amd64`、`linux/arm64` 各自在对应架构的 runner 上原生编译并打包镜像
 3. **manifest**：把两个架构合成一个多架构 manifest
 
 生成镜像标签：`1.0.0`、`1.0`、`latest`；`docker pull` 会自动选择对应架构。
