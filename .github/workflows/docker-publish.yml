@@ -3,6 +3,8 @@ name: Build and Push Multi-Arch Docker Image
 # 打 tag 即构建并推送，例如:
 #   git tag v1.0.0 && git push origin v1.0.0
 # 产物标签: 1.0.0 / 1.0 / latest
+#
+# 也可以直接在 Actions 页面手动触发，并追加一个自定义标签。
 on:
   push:
     tags:
@@ -25,6 +27,9 @@ env:
   # 默认推送到 Docker Hub 的 meidlinger1024/ncm-comment-api
   # 如需修改，可在仓库 Settings -> Variables 里增加 DOCKERHUB_REPO
   IMAGE_NAME: ${{ vars.DOCKERHUB_REPO || 'meidlinger1024/ncm-comment-api' }}
+  REGISTRY: docker.io
+  # 每个平台先推到 IMAGE_NAME-<arch>，最后由 manifest job 合成多架构镜像
+  PLATFORMS: linux/amd64,linux/arm64
 
 concurrency:
   group: docker-${{ github.ref }}
@@ -39,6 +44,8 @@ jobs:
 
       - name: Set up Dart
         uses: dart-lang/setup-dart@v1
+        with:
+          sdk: "3.9.2"
 
       - name: Resolve dependencies
         run: dart pub get
@@ -49,15 +56,32 @@ jobs:
       - name: Test
         run: dart test
 
+  # Build each architecture on its own runner.
+  #
+  # Compiling Dart under QEMU is memory hungry and one failing platform would
+  # fail a shared multi-platform build; a per-platform matrix keeps the native
+  # amd64 build fast and lets arm64 fail on its own terms. Each job pushes
+  # IMAGE_NAME-<arch>; the manifest job below merges the two.
   build:
     needs: test
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       # arm64 无法在 x86 runner 上原生构建，需要 QEMU 模拟
       - name: Set up QEMU
+        if: matrix.arch == 'arm64'
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
@@ -70,6 +94,39 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Build and push ${{ matrix.arch }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: ${{ matrix.platform }}
+          push: ${{ github.event_name == 'push' || inputs.push }}
+          tags: ${{ env.IMAGE_NAME }}-${{ matrix.arch }}
+          labels: |
+            org.opencontainers.image.title=ncm-comment-api
+            org.opencontainers.image.description=NetEase Cloud Music comment query API built on api-enhanced
+          # 关闭 provenance/SBOM，保持 manifest 简洁、兼容旧版 docker pull
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+
+  # Merge the per-architecture images into one multi-arch manifest the tags
+  # point at, so `docker pull` picks the right architecture by itself.
+  manifest:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log in to Docker Hub
+        if: ${{ github.event_name == 'push' || inputs.push }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Extract metadata (tags, labels)
         id: meta
         uses: docker/metadata-action@v5
@@ -81,25 +138,30 @@ jobs:
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
             type=raw,value=${{ inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' }}
             type=sha,format=short,enable=${{ github.event_name == 'workflow_dispatch' }}
-          # 打 tag 时把标签写进镜像，方便 docker inspect 对版本
           labels: |
             org.opencontainers.image.title=ncm-comment-api
             org.opencontainers.image.description=NetEase Cloud Music comment query API built on api-enhanced
 
-      - name: Build and push (linux/amd64 + linux/arm64)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name == 'push' || inputs.push }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          # 关闭 provenance/SBOM，保持 manifest 简洁、兼容旧版 docker pull
-          provenance: false
-          sbom: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Create and push the multi-arch manifest
+        if: ${{ github.event_name == 'push' || inputs.push }}
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -eu
+          if [ -z "${TAGS}" ]; then
+            echo "no tags to push"
+            exit 0
+          fi
+          set -f  # tags are newline separated, no globbing
+          args=""
+          for tag in ${TAGS}; do
+            args="${args} --tag ${tag}"
+          done
+          set +f
+          echo "creating manifest for:${args}"
+          docker buildx imagetools create ${args} \
+            "${IMAGE_NAME}-amd64" \
+            "${IMAGE_NAME}-arm64"
 
       - name: Summary
         run: |

@@ -146,14 +146,20 @@ docker build -t ncm-comment-api .
 
 ### 自动构建发布
 
-推送 `v*` 标签即自动构建 `linux/amd64` + `linux/arm64` 多架构镜像并推送到 Docker Hub：
+推送 `v*` 标签即自动构建并发布多架构镜像到 Docker Hub：
 
 ```sh
 git tag v1.0.0
 git push origin v1.0.0
 ```
 
-生成镜像标签：`1.0.0`、`1.0`、`latest`。
+流程（`.github/workflows/docker-publish.yml`）：
+
+1. **test**：`dart pub get` → `dart analyze --fatal-infos` → `dart test`，任一失败则不再发布
+2. **build**：`linux/amd64`、`linux/arm64` 各用一个 job 构建并推送（arm64 走 QEMU）
+3. **manifest**：把两个架构合成一个多架构 manifest
+
+生成镜像标签：`1.0.0`、`1.0`、`latest`；`docker pull` 会自动选择对应架构。
 
 需要在仓库 `Settings → Secrets and variables → Actions` 中配置：
 

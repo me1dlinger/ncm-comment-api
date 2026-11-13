@@ -2,17 +2,23 @@
 #
 # The SDK image is only needed at build time; the result is a self-contained
 # executable, so the runtime image does not carry a Dart SDK.
-FROM dart:stable AS build
+#
+# The Dart version is pinned to the one CI tests with (see the test job in
+# .github/workflows/docker-publish.yml), so a locally built image and the
+# published one compile the same source the same way.
+ARG DART_VERSION=3.9.2
+FROM dart:${DART_VERSION} AS build
 
 WORKDIR /app
 
-COPY pubspec.* ./
-RUN dart pub get
+# The lock file goes in with the manifest, so the build resolves the exact
+# versions CI tested rather than whatever is newest that day.
+COPY pubspec.yaml pubspec.lock ./
 
 COPY bin ./bin
 COPY lib ./lib
 
-RUN dart pub get --offline \
+RUN dart pub get \
     && dart compile exe bin/ncm_comment_api.dart -o /app/build/ncm_comment_api
 
 FROM alpine:latest
