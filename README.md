@@ -1,55 +1,112 @@
 # ncm-comment-api
 
-网易云音乐评论查询服务。它部署在 [api-enhanced](https://github.com/neteasecloudmusicapienhanced/api-enhanced)
-后面，**不自己访问网易云**：所有数据都来自你部署的 api-enhanced，本服务只负责参数解析、
-转发和统一响应格式。
+[![Docker Image](https://img.shields.io/badge/docker-meidlinger1024%2Fncm--comment--api-blue)](https://hub.docker.com/r/meidlinger1024/ncm-comment-api)
+[![License](https://img.shields.io/badge/license-GPL--3.0-green)](LICENSE)
 
-- 根路径 `/` 与 [review_api](https://github.com/amcfy-music/review_api) **完全兼容**，
-  老客户端不用改。
-- `/api/*` 提供更多评论查询：分页、排序、热评、楼中楼、评论统计、搜索、歌曲详情。
-- 完整接口文档见 **[docs/API.md](docs/API.md)**。
+基于 [api-enhanced](https://github.com/neteasecloudmusicapienhanced/api-enhanced) 的网易云音乐
+评论查询服务，提供歌曲评论的分页查询、多维度排序、楼中楼、热评、评论统计等能力，
+并统一了请求参数与响应格式。
+
+## 特性
+
+- **兼容旧版接口**：根路径 `/` 保留经典评论列表接口的参数与响应字段，已有客户端无需改动。
+- **完整分页**：支持按推荐、热度、时间三种排序分页获取评论，返回总数、页数和是否还有下一页。
+- **楼中楼**：评论列表可直接附带二级评论，也可通过独立接口按楼层继续翻页。
+- **更多查询**：热评、评论统计（评论数 / 点赞 / 分享）、歌曲信息、关键词搜索。
+- **多资源类型**：歌曲、MV、歌单、专辑、电台节目、视频的评论均可查询。
+- **统一响应**：所有接口（含错误）返回同一套 `{ code, msg, body }` 信封。
+
+## 架构
+
+```
+客户端 ──> ncm-comment-api ──GET──> api-enhanced ──> 网易云
+            参数解析 / 转发 / 统一响应格式
+```
+
+本服务通过 HTTP 对接 api-enhanced 提供的接口，对外暴露更简洁、统一的评论查询 API。
+
+完整接口文档见 **[docs/API.md](docs/API.md)**。
 
 ## 快速开始
 
+### Docker
+
 ```sh
-docker run -p 8383:8383 \
+docker run -d --name ncm-comment-api \
+  -p 8383:8383 \
   -e WYY_API_BASE_URL=http://127.0.0.1:3000 \
+  --restart unless-stopped \
   meidlinger1024/ncm-comment-api:latest
 ```
 
+### Docker Compose
+
+```yaml
+services:
+  ncm-comment-api:
+    image: meidlinger1024/ncm-comment-api:latest
+    container_name: ncm-comment-api
+    ports:
+      - "8383:8383"
+    environment:
+      PORT: 8383
+      WYY_API_BASE_URL: http://127.0.0.1:3000
+      API_USERNAME: ""
+      API_PASSWORD: ""
+    restart: unless-stopped
+```
+
+### 从源码运行
+
 ```sh
-# review_api 兼容
+dart pub get
+dart run bin/ncm_comment_api.dart
+```
+
+## 使用示例
+
+```sh
+# 经典评论列表接口：按歌名 + 歌手获取评论
 curl 'http://127.0.0.1:8383/?song_name=晴天&singer_name=周杰伦&album_name=叶惠美'
-# 分页评论（按热度，每页 20）
-curl 'http://127.0.0.1:8383/api/comments?song_name=晴天&singer_name=周杰伦&album_name=叶惠美&sort=hot&page=1'
-# 楼中楼
-curl 'http://127.0.0.1:8383/api/replies?id=186016&comment_id=4956438'
+
+# 按热度分页获取评论
+curl 'http://127.0.0.1:8383/api/comments?song_id=186016&sort=hot&page=1&pageSize=20'
+
+# 获取某条评论下的楼中楼
+curl 'http://127.0.0.1:8383/api/replies?id=186016&comment_id=4956438&limit=20'
+
+# 获取评论统计
+curl 'http://127.0.0.1:8383/api/stats?id=186016'
 ```
 
 ## 接口一览
 
 | 接口 | 说明 |
 |---|---|
-| `GET /` | review_api 兼容：`song_name` + `singer_name` + 可选 `album_name` |
-| `GET /api/comments` | 分页评论，推荐/热度/时间排序，可带楼中楼 |
+| `GET /` | 评论列表：`song_name` + `singer_name` + 可选 `album_name` |
+| `GET /api/comments` | 分页评论，推荐 / 热度 / 时间排序，可附带楼中楼 |
 | `GET /api/hot` | 热评 |
 | `GET /api/replies` | 某条评论下的二级评论，可翻页 |
 | `GET /api/stats` | 评论数 / 点赞 / 分享 / 乐评数 |
-| `GET /api/search` | 关键词搜歌/歌手/专辑/歌单/MV/用户 |
+| `GET /api/search` | 关键词搜索歌曲 / 歌手 / 专辑 / 歌单 / MV / 用户 |
 | `GET /api/song` | 歌曲信息 + 评论数 + 红心数 |
 
-除根路径的 400 错误外，所有接口统一返回：
+响应示例：
 
 ```json
-{ "code": 200, "msg": "success", "body": { } }
+{
+  "code": 200,
+  "msg": "success",
+  "body": { }
+}
 ```
 
-参数、字段、分页与解析方式详见 [docs/API.md](docs/API.md)。
+参数、字段含义、分页方式与解析示例详见 **[docs/API.md](docs/API.md)**。
 
 ## 配置
 
-`config.conf`（不存在会自动生成）或环境变量，环境变量优先。
-键名与 review_api 保持一致，旧配置文件可直接使用：
+支持 `config.conf` 配置文件和环境变量，环境变量优先级更高。
+配置文件首次启动时自动生成，键名保持稳定，已有部署的配置可直接复用。
 
 ```ini
 [api]
@@ -62,39 +119,64 @@ max_replies_per_comment=500
 cache_ttl=60
 ```
 
-| 环境变量 | 说明 |
-|---|---|
-| `WYY_API_BASE_URL` | api-enhanced 地址 |
-| `PORT` | 监听端口 |
-| `API_USERNAME` / `API_PASSWORD` | 非空则启用 token 校验（算法与 review_api 相同） |
-| `UPSTREAM_TIMEOUT` | 上游超时秒数 |
-| `MAX_REPLIES_PER_COMMENT` | 单页每层楼最多回复数 |
-| `CACHE_TTL` | 上游缓存秒数，0 关闭 |
+| 环境变量 | 说明 | 默认值 |
+|---|---|---|
+| `WYY_API_BASE_URL` | api-enhanced 地址 | `http://127.0.0.1:3000` |
+| `PORT` | 监听端口 | `8383` |
+| `API_USERNAME` / `API_PASSWORD` | 非空则启用 token 校验（sha256 摘要） | 空 |
+| `UPSTREAM_TIMEOUT` | 上游请求超时（秒） | `30` |
+| `MAX_REPLIES_PER_COMMENT` | 单页每层楼最多拉取的回复数 | `500` |
+| `CACHE_TTL` | 上游响应缓存时长（秒），`0` 为关闭 | `60` |
 
-## 从源码运行
+### Token 校验
 
-```sh
-dart pub get
-dart test
-dart run bin/ncm_comment_api.dart
+当 `username` 或 `password` 非空时，所有接口都需要携带 `token` 参数：
+
+```text
+token = sha256(username + password + wyy_api_base_url)
 ```
 
-## 构建 Docker 镜像
+## 构建
 
-GitHub Actions 在打 `v*` tag 或手动触发时构建 `linux/amd64` + `linux/arm64` 并推送到
-Docker Hub（见 `.github/workflows/docker-publish.yml`）。
+### 本地构建镜像
 
 ```sh
 docker build -t ncm-comment-api .
 ```
 
-## 依赖的上游接口
+### 自动构建发布
 
-本服务只调用 api-enhanced 的这些 GET 接口：
+推送 `v*` 标签即自动构建 `linux/amd64` + `linux/arm64` 多架构镜像并推送到 Docker Hub：
 
-`/cloudsearch`、`/search`、`/comment/new`、`/comment/music`（及 `/comment/mv` 等）、
-`/comment/floor`、`/comment/info/list`、`/song/detail`、`/song/red/count`。
+```sh
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+生成镜像标签：`1.0.0`、`1.0`、`latest`。
+
+需要在仓库 `Settings → Secrets and variables → Actions` 中配置：
+
+| Secret | 说明 |
+|---|---|
+| `DOCKERHUB_USERNAME` | Docker Hub 用户名 |
+| `DOCKERHUB_TOKEN` | Docker Hub Access Token |
+
+默认推送到 `meidlinger1024/ncm-comment-api`，可通过仓库变量 `DOCKERHUB_REPO` 覆盖。
+也可在 Actions 页面手动触发（`workflow_dispatch`），支持指定额外标签。
+
+## 开发
+
+```sh
+dart pub get     # 安装依赖
+dart analyze     # 静态检查
+dart test        # 运行测试
+```
+
+## 致谢
+
+- [api-enhanced](https://github.com/neteasecloudmusicapienhanced/api-enhanced)：上游数据接口
 
 ## License
 
-GPL-3.0，见 [LICENSE](LICENSE)。
+[GPL-3.0](LICENSE)

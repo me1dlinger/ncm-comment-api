@@ -1,7 +1,7 @@
 /// Comment models, and the JSON shape they are served in.
 ///
-/// The wire format is review_api's, extended rather than replaced: a caller that
-/// only knows `nick`, `avatarurl`, `content`, `praiseNum`, `createTime`,
+/// The wire format keeps the classic comment fields and extends them: a caller that
+/// that only knows `nick`, `avatarurl`, `content`, `praiseNum`, `createTime`,
 /// `commentId`, `type` and `id` keeps working, because those fields keep their
 /// names and types. Everything else is additional, so an old client can ignore
 /// it.
@@ -53,7 +53,7 @@ class CommentUser {
   final String userId;
   final String nickname;
 
-  /// The avatar URL, served under review_api's spelling `avatarurl`.
+  /// The avatar URL, served under the lower case field name `avatarurl`.
   final String avatarUrl;
 
   /// Whether the listener is a paid member (VIP / black vinyl).
@@ -98,7 +98,7 @@ class CommentUser {
 
 /// A comment.
 ///
-/// [type] follows the convention review_api exposed: `0` and `1` mark a featured
+/// [type] follows NetEase's convention: `0` and `1` mark a featured
 /// comment (`1` is what the newer upstream calls "hot"), `2` is an ordinary one.
 /// [replies] carries the second level replies fetched alongside the comment, and
 /// [replyCount] says how many there really are, so a client can tell a fully
@@ -111,10 +111,10 @@ class SongComment {
   final String commentId;
   final String content;
 
-  /// Likes. review_api called it `praiseNum`; the upstream calls it `likedCount`.
+  /// Likes. Served as `praiseNum`; the upstream calls it `likedCount`.
   final int praiseNum;
 
-  /// Unix seconds, as review_api reported it.
+  /// Unix seconds.
   final int createTime;
 
   /// The same instant in milliseconds, as the upstream reports it.
@@ -187,7 +187,7 @@ class SongComment {
     final replyCount = Json.toInt(raw['replyCount']);
 
     final timeMs = Json.toInt(raw['time']);
-    // The upstream sends milliseconds; review_api divided by 1000. A seconds
+    // The upstream sends milliseconds, the API serves seconds. A seconds
     // value (or a missing one) shows up as a too-small number and is left as is.
     final timeSeconds = timeMs > 100000000000 ? timeMs ~/ 1000 : timeMs;
 
@@ -252,9 +252,9 @@ class SongComment {
     );
   }
 
-  /// review_api's field set first, then this service's additions.
+  /// The classic field set first, then this service's additions.
   Map<String, dynamic> toJson() => {
-    // review_api's fields, unchanged in name and type.
+    // The classic fields, unchanged in name and type.
     'id': id,
     'commentId': commentId,
     'nick': user.nickname,

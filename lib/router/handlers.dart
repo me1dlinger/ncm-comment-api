@@ -12,11 +12,12 @@ import 'package:shelf/shelf.dart';
 
 /// Every endpoint this service answers.
 ///
-/// The root path is review_api's endpoint: the same parameters, the same answer
+/// The root path is the classic comment list: fixed parameters, the same answer
 /// shape, the same optional token. The paths under `/api/` add the queries
-/// api-enhanced can answer and review_api never exposed. Every endpoint answers
-/// in the same `{code, msg, body}` envelope, so a client parses one shape
-/// whatever it asked for. See docs/API.md for the full reference.
+/// api-enhanced can answer: paging, ordering, hot comments, replies, statistics
+/// and search. Every endpoint answers in the same `{code, msg, body}` envelope,
+/// so a client parses one shape whatever it asked for. See docs/API.md for the
+/// full reference.
 ///
 /// Only GET is served: every endpoint here is a read, and api-enhanced answers
 /// reads over GET.
@@ -35,15 +36,14 @@ class Handlers {
     required this.upstreamUrl,
   });
 
-  /// The token review_api required when a username or password was configured:
-  /// sha256 of `username + password + upstream url`.
+  /// The token required when a username or password was configured: sha256 of
+  /// `username + password + upstream url`.
   bool get authRequired => username.isNotEmpty || password.isNotEmpty;
 
   String get serverToken =>
       sha256.convert(utf8.encode('$username$password$upstreamUrl')).toString();
 
-  /// review_api's token check, kept as it was: a protected server refuses a
-  /// missing token and a wrong one differently.
+  /// A protected server tells a missing token from a wrong one.
   Response? checkToken(Request request) {
     if (!authRequired) {
       return null;
@@ -60,14 +60,14 @@ class Handlers {
 
   /// GET /
   ///
-  /// review_api: `?song_name=&singer_name=&album_name=&token=`. The song is
-  /// looked up by name and every comment the service can read is answered as a
-  /// flat list, featured ones first, in the same field shape review_api used.
-  Future<Response> reviewApi(Request request) async {
+  /// `?song_name=&singer_name=&album_name=&token=`. The song is looked up by
+  /// name and the comments the service can read are answered as a flat list,
+  /// featured ones first, in the classic field shape.
+  Future<Response> commentList(Request request) async {
     final songName = param(request, 'song_name');
     final singerName = param(request, 'singer_name');
 
-    // review_api required both names and answered a plain-text 400 without.
+    // Both names are required; a plain-text 400 answers a request without them.
     if (songName == null || singerName == null) {
       return Response.badRequest(body: 'params error');
     }

@@ -6,9 +6,9 @@ import 'package:shelf/shelf_io.dart' as shelf_io;
 
 /// Starts the service.
 ///
-/// The configuration comes from `config.conf` and the environment, exactly as
-/// review_api read it: `wyy_api_base_url`, `default_port`, `username`,
-/// `password`.
+/// The configuration comes from `config.conf` and the environment:
+/// `wyy_api_base_url`, `default_port`, `username`, `password`, and the optional
+/// timeout, reply limit and cache settings.
 Future<void> main(List<String> args) async {
   final config = await AppConfig.load();
   final app = withMiddleware(buildApp(config: config));

@@ -207,14 +207,14 @@ void main() {
     );
   });
 
-  group('review_api root', () {
+  group('root comment list', () {
     test('answers 400 params error without both names', () async {
       final response = await call(app, '/?song_name=晴天');
       expect(response.statusCode, 400);
       expect(await response.readAsString(), 'params error');
     });
 
-    test('answers the review_api envelope with review_api fields', () async {
+    test('answers the envelope with the classic fields', () async {
       final response = await call(app, '/?song_name=晴天&singer_name=周杰伦');
       expect(response.statusCode, 200);
       final body = await bodyOf(response);
@@ -224,7 +224,7 @@ void main() {
       expect(list, isNotEmpty);
 
       final first = list.first as Map<String, dynamic>;
-      // The fields review_api guaranteed, unchanged in name and type.
+      // The classic fields, unchanged in name and type.
       expect(first['id'], '186016');
       expect(first['commentId'], isNotEmpty);
       expect(first['nick'], isNotEmpty);

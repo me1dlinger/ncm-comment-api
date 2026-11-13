@@ -3,15 +3,15 @@ import 'dart:io';
 /// Where the NetEase cloud music API lives, which port this service listens on
 /// and what credentials a caller has to present.
 ///
-/// The keys are review_api's config.conf keys (`wyy_api_base_url`,
-/// `default_port`, `username`, `password`), so an existing deployment's file
-/// keeps working. A few extra keys are optional and were not in that file:
+/// The core keys are `wyy_api_base_url`, `default_port`, `username` and
+/// `password`, so an existing deployment's config file keeps working.
 /// `upstream_timeout` (seconds, default 30), `max_replies_per_comment`
-/// (default 500) and `cache_ttl` (seconds, default 60, 0 disables the cache).
+/// (default 500) and `cache_ttl` (seconds, default 60, 0 disables the cache)
+/// are optional additions.
 ///
-/// Environment variables win over the file, same as in review_api:
-/// `WYY_API_BASE_URL`, `PORT`, `API_USERNAME`, `API_PASSWORD`, plus
-/// `UPSTREAM_TIMEOUT`, `MAX_REPLIES_PER_COMMENT` and `CACHE_TTL`.
+/// Environment variables win over the file: `WYY_API_BASE_URL`, `PORT`,
+/// `API_USERNAME`, `API_PASSWORD`, plus `UPSTREAM_TIMEOUT`,
+/// `MAX_REPLIES_PER_COMMENT` and `CACHE_TTL`.
 class AppConfig {
   /// Base URL of the api-enhanced instance, without a trailing slash.
   final String wyyApiBaseUrl;
@@ -95,7 +95,7 @@ cache_ttl=60
     );
   }
 
-  /// Whether callers have to present the review_api `token` parameter.
+  /// Whether callers have to present the `token` parameter.
   bool get authRequired => username.isNotEmpty || password.isNotEmpty;
 
   static Future<void> _ensureConfigFile() async {

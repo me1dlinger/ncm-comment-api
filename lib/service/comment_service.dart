@@ -39,7 +39,7 @@ class CommentService {
   /// Resolves the resource a query names.
   ///
   /// A query that carries an id is already resolved. A song name goes through
-  /// search, exactly as review_api did.
+  /// search.
   Future<ResolvedResource?> resolve(CommentQuery query) async {
     if (query.id.isNotEmpty) {
       return ResolvedResource(type: query.type, id: query.id, resolvedBy: 'id');

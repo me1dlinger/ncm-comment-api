@@ -1,11 +1,10 @@
 # ncm-comment-api 接口文档
 
-一个网易云音乐评论查询服务。它**不自己访问网易云**，而是部署在你的
-[api-enhanced](https://github.com/neteasecloudmusicapienhanced/api-enhanced) 前面：
-所有数据都来自 api-enhanced，本服务只负责参数解析、转发封装和统一响应格式。
+基于 [api-enhanced](https://github.com/neteasecloudmusicapienhanced/api-enhanced) 的
+网易云音乐评论查询服务。上游为已部署的 api-enhanced 实例，通过 `wyy_api_base_url` 配置。
 
-- 根路径 `/`：与 [review_api](https://github.com/amcfy-music/review_api) **完全一致**，老客户端不用改。
-- `/api/*`：在 review_api 格式基础上新增的评论查询接口。
+- 根路径 `/`：经典评论列表接口，参数与响应字段保持不变，已有客户端可直接使用。
+- `/api/*`：分页、排序、楼中楼、热评、统计、搜索等评论查询接口。
 
 ---
 
@@ -14,7 +13,7 @@
 1. [部署与配置](#1-部署与配置)
 2. [通用约定](#2-通用约定)
 3. [接口清单](#3-接口清单)
-4. [GET / — review_api 兼容接口](#4-get---review_api-兼容接口)
+4. [GET / — 评论列表接口](#4-get---评论列表接口)
 5. [GET /api/comments — 分页评论](#5-get-apicomments--分页评论)
 6. [GET /api/hot — 热评](#6-get-apihot--热评)
 7. [GET /api/replies — 楼中楼（二级评论）](#7-get-apireplies--楼中楼二级评论)
@@ -59,15 +58,15 @@ dart run bin/ncm_comment_api.dart
 
 | config.conf 键 | 环境变量 | 默认值 | 说明 |
 |---|---|---|---|
-| `wyy_api_base_url` | `WYY_API_BASE_URL` | `http://127.0.0.1:3000` | api-enhanced 地址，与 review_api 同名同义 |
-| `default_port` | `PORT` | `8383` | 监听端口，与 review_api 相同 |
-| `username` | `API_USERNAME` | 空 | 与 review_api 相同：非空即启用 token 校验 |
+| `wyy_api_base_url` | `WYY_API_BASE_URL` | `http://127.0.0.1:3000` | api-enhanced 地址 |
+| `default_port` | `PORT` | `8383` | 监听端口 |
+| `username` | `API_USERNAME` | 空 | 非空即启用 token 校验 |
 | `password` | `API_PASSWORD` | 空 | 同上 |
 | `upstream_timeout` | `UPSTREAM_TIMEOUT` | `30` | 单次上游请求超时（秒） |
 | `max_replies_per_comment` | `MAX_REPLIES_PER_COMMENT` | `500` | 单页每层楼最多拉多少条回复 |
 | `cache_ttl` | `CACHE_TTL` | `60` | 上游回答缓存秒数，`0` 关闭 |
 
-### token 校验（与 review_api 一致）
+### token 校验
 
 当 `username` 或 `password` 任一非空时，**所有接口**都要求带 `token` 参数：
 
@@ -75,7 +74,7 @@ dart run bin/ncm_comment_api.dart
 token = sha256(username + password + wyy_api_base_url)
 ```
 
-缺失返回 HTTP 403 `missing token`，错误返回 HTTP 403 `invalid token`（纯文本，与 review_api 相同）。
+缺失返回 HTTP 403 `missing token`，错误返回 HTTP 403 `invalid token`（纯文本）。
 
 ---
 
@@ -151,7 +150,7 @@ HTTP 状态码与 `code` 一致，可以只看 HTTP 状态码判断成功与否�
 
 | 接口 | 作用 | 上游 api-enhanced 接口 |
 |---|---|---|
-| `GET /` | review_api 兼容：按歌名取评论列表 | `/cloudsearch` 或 `/search`、`/comment/new`、`/comment/music` |
+| `GET /` | 评论列表：按歌名取评论 | `/cloudsearch` 或 `/search`、`/comment/new`、`/comment/music` |
 | `GET /api/comments` | 分页评论（推荐/热度/时间），可带楼中楼 | `/comment/new`、`/comment/music`、`/comment/floor` |
 | `GET /api/hot` | 热评 | `/comment/music`（无热评时回退 `/comment/new`） |
 | `GET /api/replies` | 某条评论下的二级评论，可翻页 | `/comment/floor` |
@@ -161,9 +160,9 @@ HTTP 状态码与 `code` 一致，可以只看 HTTP 状态码判断成功与否�
 
 ---
 
-## 4. `GET /` — review_api 兼容接口
+## 4. `GET /` — 评论列表接口
 
-与 review_api 根路径完全一致，老客户端（如 Sylvakru 的评论页）无需改动。
+经典评论列表接口，参数与响应字段保持不变，已有客户端无需改动。
 
 ### 请求参数
 
@@ -213,12 +212,12 @@ GET /?song_name=晴天&singer_name=周杰伦&album_name=叶惠美
 }
 ```
 
-review_api 的字段（`id` / `commentId` / `nick` / `avatarurl` / `content` /
-`praiseNum` / `createTime` / `type`）名称与类型完全不变，其余为新增字段，旧客户端可忽略。
+`id` / `commentId` / `nick` / `avatarurl` / `content` / `praiseNum` / `createTime` / `type`
+这 8 个字段的名称与类型保持稳定，其余为扩展字段，旧客户端可忽略。
 
 - 返回内容 = 热评 + 一页普通评论（最多约 50 条），热评在前。
-- `type`：`1` 热评，`2` 普通评论（review_api 里热评是 `0/1`，这里同样取 `1`）。
-- 找不到歌时返回 `{"code":200,"msg":"success","body":[]}`，与 review_api 一致。
+- `type`：`1` 热评，`2` 普通评论。
+- 找不到歌时返回 `{"code":200,"msg":"success","body":[]}`。
 
 ### 解析要点
 
@@ -590,12 +589,12 @@ GET /api/song?song_name=晴天&singer_name=周杰伦&album_name=叶惠美
 
 出现在 `body`（根路径）、`body.comments`、`body.hotComments`、`body.replies`。
 
-| 字段 | 类型 | review_api 字段 | 说明 |
+| 字段 | 类型 | 基础字段 | 说明 |
 |---|---|---|---|
 | `id` | string | ✅ | 所属资源 id（歌曲 id） |
 | `commentId` | string | ✅ | 评论 id |
 | `nick` | string | ✅ | 昵称 |
-| `avatarurl` | string | ✅ | 头像 URL（review_api 的小写拼写） |
+| `avatarurl` | string | ✅ | 头像 URL（全小写字段名） |
 | `content` | string | ✅ | 评论内容 |
 | `praiseNum` | int | ✅ | 点赞数 |
 | `createTime` | int | ✅ | 发表时间，**秒** |
@@ -613,7 +612,7 @@ GET /api/song?song_name=晴天&singer_name=周杰伦&album_name=叶惠美
 | `replies` | array | ➕ | 已拉取的楼中楼（最多 `reply_limit` 条） |
 | `repliesHasMore` | bool | ➕ | `replies` 是否只是楼内前几条 |
 
-> 旧客户端只读 review_api 那 8 个字段即可正常工作。
+> 只读上述 8 个基础字段即可正常工作，扩展字段按需使用。
 
 ### 歌曲对象（`song`）
 
@@ -635,12 +634,12 @@ GET /api/song?song_name=晴天&singer_name=周杰伦&album_name=叶惠美
 | HTTP / code | 场景 |
 |---|---|
 | `400` | 缺必填参数。`msg` 形如 `params error: pass id (or song_id) or song_name` |
-| `403` | 配了 username/password 但没带或带错 `token`（纯文本，与 review_api 相同） |
+| `403` | 配了 username/password 但没带或带错 `token`（纯文本） |
 | `404` | 资源不存在（如歌名搜不到），`msg` 形如 `song not found: …` |
 | `502` | 上游 api-enhanced 读不到 / 返回失败 |
 | `500` | 服务内部异常（`{"code":500,"msg":"internal error","body":null}`） |
 
-根路径 `GET /` 的缺参数错误保持 review_api 原样：HTTP 400 + 纯文本 `params error`。
+根路径 `GET /` 的缺参数错误为 HTTP 400 + 纯文本 `params error`。
 
 ### 常见问题
 
@@ -655,7 +654,7 @@ GET /api/song?song_name=晴天&singer_name=周杰伦&album_name=叶惠美
 不应发生（服务内部走游标）。若自己实现客户端调上游，注意网易云时间排序是游标分页不是页码分页。
 
 **根路径只返回几十条**
-这是 review_api 的行为（热评 + 一页普通评论）。要完整评论请用 `/api/comments` 分页。
+根路径按设计只返回热评 + 一页普通评论。要完整评论请用 `/api/comments` 分页。
 
 **`reply_limit` 让请求变慢**
 每条有回复的评论都要多一次上游请求。只看评论列表时传 `reply_limit=0` 最快。

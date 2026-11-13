@@ -10,9 +10,9 @@ import 'package:ncm_comment_api/util/cache.dart';
 /// One answer from the NetEase API: the HTTP status plus the decoded body.
 ///
 /// `body` is a decoded JSON map or list when the upstream answered with JSON,
-/// and a plain string otherwise. `code` follows review_api's convention: the
-/// upstream HTTP status when the upstream answered, and a gateway code when it
-/// did not; [unreachable] and [timedOut] tell the two apart.
+/// and a plain string otherwise. `code` is the upstream HTTP status when the
+/// upstream answered, and a gateway code when it did not; [unreachable] and
+/// [timedOut] tell the two apart.
 class XResponse {
   final dynamic body;
   final int code;

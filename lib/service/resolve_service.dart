@@ -6,9 +6,8 @@ import 'package:ncm_comment_api/util/https_utils.dart';
 /// Resolves songs and other resources to ids, and reads their details.
 ///
 /// The upstream's comment endpoints only take ids; a caller who knows a song by
-/// name has to go through search first. That lookup is the same one review_api
-/// did, including its name normalisation and its ranking, so a name that worked
-/// there resolves to the same song here.
+/// name has to go through search first. Names are normalised before they are
+/// compared, so punctuation and spacing differences do not matter.
 class ResolveService {
   final UpstreamClient client;
 
@@ -19,12 +18,11 @@ class ResolveService {
 
   /// The song [songName] (and optionally [artistName], [albumName]) names.
   ///
-  /// Candidates are ranked the way review_api ranked them: song + artist +
-  /// album, then song + artist, then the song alone, then whatever the search
-  /// put first. review_api sent `song/artist` as its only keyword; the search
-  /// engine ranks that differently today, putting covers and re-uploads first,
-  /// so the plain name is tried first and the album, when a caller knows it,
-  /// narrows the search to the original recording.
+  /// Candidates are ranked by how closely they match: same album and artist
+  /// first, then same artist, then the song name alone, then whatever the
+  /// search put first. The plain name is tried first because the search engine
+  /// puts covers and re-uploads high for a `song/artist` query; an album name,
+  /// when a caller knows it, narrows the search to the original recording.
   Future<(CommentSong, String)?> resolveSong({
     required String songName,
     String artistName = '',
@@ -76,7 +74,7 @@ class ResolveService {
       return (best, 'search');
     }
 
-    // Nothing matched by name: review_api fell back to the first search result.
+    // Nothing matched by name: fall back to the first search result.
     for (final attempt in attempts) {
       final songs = await _search(attempt.keyword);
       if (songs.isNotEmpty) {
@@ -269,8 +267,8 @@ class ResolveService {
 
   /// The upstream's rendering of names before they are compared.
   ///
-  /// review_api stripped the punctuation that differs between a search result
-  /// and a caller's typing, then compared the strings exactly.
+  /// Strips the punctuation and spacing that differ between a search result and
+  /// a caller's typing, then compares the strings exactly.
   static String _normalise(String input) {
     if (input.trim().isEmpty) {
       return '';

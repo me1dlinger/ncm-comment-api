@@ -1,5 +1,8 @@
 name: Build and Push Multi-Arch Docker Image
 
+# 打 tag 即构建并推送，例如:
+#   git tag v1.0.0 && git push origin v1.0.0
+# 产物标签: 1.0.0 / 1.0 / latest
 on:
   push:
     tags:
@@ -78,6 +81,10 @@ jobs:
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
             type=raw,value=${{ inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' }}
             type=sha,format=short,enable=${{ github.event_name == 'workflow_dispatch' }}
+          # 打 tag 时把标签写进镜像，方便 docker inspect 对版本
+          labels: |
+            org.opencontainers.image.title=ncm-comment-api
+            org.opencontainers.image.description=NetEase Cloud Music comment query API built on api-enhanced
 
       - name: Build and push (linux/amd64 + linux/arm64)
         uses: docker/build-push-action@v6

@@ -4,16 +4,16 @@ import 'package:shelf/shelf.dart';
 
 /// The envelope every endpoint answers in.
 ///
-/// review_api answered `{"code":200,"msg":"success","body":[...]}`, and every
-/// endpoint here answers in the same envelope, failures included, so a client
-/// has one thing to parse whatever it asked for.
+/// The shape is `{"code":200,"msg":"success","body":[...]}`. Every endpoint
+/// answers in it, failures included, so a client has one thing to parse
+/// whatever it asked for.
 Map<String, dynamic> envelope(Object? body, {int code = 200, String msg = 'success'}) => {
   'code': code,
   'msg': msg,
   'body': body,
 };
 
-/// The headers review_api answered with, plus Accept for the CORS preflight.
+/// The headers every answer carries, including the CORS allowance.
 const Map<String, String> apiHeaders = {
   'Content-Type': 'application/json; charset=utf-8',
   'Access-Control-Allow-Origin': '*',
@@ -22,7 +22,7 @@ const Map<String, String> apiHeaders = {
   'x-powered-by': 'ncm-comment-api server',
 };
 
-/// [payload] as a JSON answer with review_api's headers.
+/// [payload] as a JSON answer with the API headers.
 Response jsonResponse(Map<String, dynamic> payload, {required int status}) =>
     Response(status, body: jsonEncode(payload), headers: apiHeaders);
 

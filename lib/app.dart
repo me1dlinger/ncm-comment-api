@@ -10,8 +10,8 @@ import 'package:shelf_router/shelf_router.dart';
 
 /// The routes this service answers, as one shelf handler.
 ///
-/// review_api served only `/`; the root is kept exactly as it was and the new
-/// queries live under `/api/`. Everything is GET: there is nothing to write.
+/// The root path keeps its classic comment list; the new queries live under
+/// `/api/`. Everything is GET: there is nothing to write.
 Handler buildApp({required AppConfig config, UpstreamClient? upstream}) {
   final client = upstream ??
       UpstreamClient(baseUrl: config.wyyApiBaseUrl, timeout: config.upstreamTimeout, cacheTtl: config.cacheTtl);
@@ -28,8 +28,8 @@ Handler buildApp({required AppConfig config, UpstreamClient? upstream}) {
 
   final router = Router(notFoundHandler: (Request request) => Response.notFound('Page not found'));
 
-  // review_api's endpoint, unchanged.
-  router.get('/', handlers.reviewApi);
+  // The classic comment list endpoint, unchanged.
+  router.get('/', handlers.commentList);
 
   // The queries added on top of it.
   router.get('/api/comments', handlers.commentsPage);

@@ -143,7 +143,7 @@ class CommentPage {
   /// The song record, when the resource is a song and one was looked up.
   final CommentSong? song;
 
-  /// The id as review_api answered it: the song id for a song, the resource id
+  /// The id as the root endpoint answers it: the song id for a song, the resource
   /// otherwise. [id] is the same value, kept under the name the new endpoints
   /// use.
   final String songId;
